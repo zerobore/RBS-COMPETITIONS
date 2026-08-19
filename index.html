@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b0d10">
+<title>RBS Inter-House Championship — Live Buzzer Arena</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏆</text></svg>">
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+  RBS INTER-HOUSE CHAMPIONSHIP  ·  single-file live buzzer arena
+═══════════════════════════════════════════════════════════════════════════════
+  WORK DONE
+  • One self-contained .html file (no build, no framework, no server needed).
+  • Three roles — SCREEN (unlimited), CONTROLLER (1 user, password PASSWORD0011),
+    HOUSES: RED/BLUE/GREEN/ORANGE (1 user each, password = house name in CAPS).
+  • Spelling Bee competition engine: 4 rounds (EASY / HARD / DIFFICULT /
+    RAPID FIRE), word forced to CAPITALS, armed buzzers, first-buzz lock-in,
+    reaction time, controller answer-check with live MATCH indicator,
+    +1 scoring, wrong-answer re-buzz (house locked out for that word),
+    buzz order list, word reveal/hide, full scoreboard + activity log.
+  • “More competitions coming soon” slots ready for future updates.
+  • Serverless connectivity: BroadcastChannel + localStorage for same-device
+    tabs (works 100% offline), PeerJS/WebRTC room codes for many devices on
+    the same Wi-Fi/LAN (data flows device-to-device, no game server).
+  • Role-themed UI: houses = house colour + black, controller = grey + black,
+    screen = clean light “normal” theme tuned for TVs/phones.
+  • Mobile-first controller & house panels (giant touch buzzer), TV-first
+    screen layout, buzzer sounds, confetti, reconnect + host-presence logic.
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ══════════════ BASE ══════════════ */
+:root{
+  --font:'Space Grotesk','Archivo','Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;
+  --red:#ff4757; --blue:#3b82f6; --green:#22c55e; --orange:#fb923c;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font); color:var(--txt,#e8eaed); background:var(--bg,#0b0d10);
+  min-height:100vh; overflow-x:hidden;
+}
+button{font-family:var(--font); cursor:pointer; touch-action:manipulation}
+input{font-family:var(--font); font-size:16px}
+.hidden{display:none !important}
+.view{display:none; min-height:100vh}
+.view.active{display:block}
+
+.btn{
+  border:none; border-radius:14px; padding:14px 20px; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; font-size:.95rem; transition:transform .12s, box-shadow .2s, opacity .2s;
+  user-select:none; -webkit-user-select:none;
+}
+.btn:active{transform:scale(.96)}
+.btn:disabled{opacity:.35; cursor:not-allowed; transform:none}
+.btn.block{width:100%}
+.btn.big{padding:20px 24px; font-size:1.15rem; border-radius:18px}
+.btn.ghost{background:transparent; border:2px solid var(--line,#2b2f34); color:inherit}
+.btn.warn{background:#3a2b1e; color:#ffb86b; border:1px solid #7c5226}
+.btn.danger{background:#3a1d22; color:#ff8fa0; border:1px solid #7c2b3a}
+.btn.good{background:#12351f; color:#4ade80; border:1px solid #1d5c35}
+
+.chip{display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:999px;
+  font-size:.78rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+  border:1px solid var(--line,#2b2f34); background:rgba(127,127,127,.08)}
+
+/* ══════════════ THEMES ══════════════ */
+body[data-theme="login"]{--bg:#0b0d10; --panel:#12151a; --panel2:#171b21; --line:#262c34; --txt:#eef1f5; --dim:#8b939e; --accent:#ffd166}
+body[data-theme="controller"]{--bg:#0e0f11; --panel:#141619; --panel2:#1a1d21; --line:#2b2f34; --txt:#e8eaed; --dim:#9aa0a6; --accent:#c9cdd2; --accent2:#8f959c}
+body[data-theme="controller"]{background:
+  repeating-linear-gradient(135deg,#0e0f11 0 14px,#101214 14px 28px)}
+body[data-theme="screen"]{--bg:#eef1f7; --panel:#ffffff; --panel2:#f6f8fc; --line:#dfe4ee; --txt:#101828; --dim:#667085; --accent:#111827}
+body[data-theme="screen"]{background:linear-gradient(180deg,#f4f6fb,#e8edf6)}
+body[data-theme="house-red"]{--bg:#0b0406; --panel:#160608; --panel2:#1e090c; --line:#3d1218; --txt:#ffe9eb; --dim:#c98a91; --accent:var(--red); --accent2:#c0392b}
+body[data-theme="house-blue"]{--bg:#04060e; --panel:#070d1c; --panel2:#0a1226; --line:#14264d; --txt:#e6efff; --dim:#89a6d8; --accent:var(--blue); --accent2:#1d4ed8}
+body[data-theme="house-green"]{--bg:#030a05; --panel:#071207; --panel2:#0a1a0a; --line:#16381c; --txt:#e6ffe9; --dim:#8acb97; --accent:var(--green); --accent2:#15803d}
+body[data-theme="house-orange"]{--bg:#0d0603; --panel:#180b05; --panel2:#220f06; --line:#4a2310; --txt:#ffefe2; --dim:#dda37c; --accent:var(--orange); --accent2:#c2410c}
+body[data-theme^="house-"]{background:radial-gradient(120% 90% at 50% -10%, color-mix(in srgb, var(--accent) 22%, transparent), var(--bg) 60%)}
+
+/* ══════════════ LOGIN ══════════════ */
+.login-wrap{max-width:980px;margin:0 auto;padding:28px 18px 60px}
+.brand{text-align:center;padding:26px 10px 30px}
+.brand-badge{font-size:64px;filter:drop-shadow(0 6px 18px rgba(255,209,102,.45));animation:floaty 3s ease-in-out infinite}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.brand h1{font-family:'Archivo',var(--font);font-weight:900;font-size:clamp(1.7rem,5.5vw,3.1rem);letter-spacing:.02em;line-height:1.05}
+.brand h1 span{background:linear-gradient(90deg,#ffd166,#ff8a5c);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand .tag{color:var(--dim);margin-top:10px;letter-spacing:.18em;text-transform:uppercase;font-size:.8rem}
+.room-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin-bottom:20px}
+.room-card label{font-size:.72rem;letter-spacing:.14em;font-weight:700;color:var(--dim);display:block;margin-bottom:10px}
+.room-card label .hint{text-transform:none;letter-spacing:0;font-weight:500}
+.room-row{display:flex;gap:10px}
+.room-row input{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:12px;color:var(--txt);
+  padding:12px 14px;font-size:1.25rem;font-weight:700;letter-spacing:.3em;text-transform:uppercase;text-align:center}
+.room-row input:focus{outline:2px solid var(--accent)}
+.mini{font-size:.78rem;color:var(--dim);margin-top:8px}
+.role-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.role-card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px;position:relative;overflow:hidden}
+.role-card::before{content:'';position:absolute;inset:0 0 auto 0;height:4px;background:var(--rc,#666)}
+.role-card h3{font-size:1.3rem;font-weight:900;letter-spacing:.04em;display:flex;align-items:center;gap:10px}
+.role-card .sub{color:var(--dim);font-size:.82rem;margin:6px 0 14px}
+.role-card[data-role="screen"]{--rc:#38bdf8}
+.role-card[data-role="controller"]{--rc:#9aa0a6}
+.role-card[data-role="house"]{--rc:linear-gradient(90deg,var(--red),var(--blue),var(--green),var(--orange))}
+.role-card .btn{background:var(--panel2);border:1px solid var(--line);color:var(--txt)}
+.role-card .btn:hover{border-color:var(--rc,#666);box-shadow:0 6px 24px -12px var(--rc,#666)}
+.pwbox{margin-top:12px;background:var(--panel2);border:1px dashed var(--line);border-radius:14px;padding:14px}
+.pwbox input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--txt);
+  padding:12px 14px;letter-spacing:.18em;font-weight:700;text-transform:uppercase;margin-bottom:10px}
+.pwbox input:focus{outline:2px solid var(--accent)}
+.err{color:#ff7b8f;font-size:.8rem;min-height:1em;margin-top:8px;font-weight:700;letter-spacing:.06em}
+.shake{animation:shake .4s}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}75%{transform:translateX(7px)}}
+.house-pick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.hchip{display:flex;align-items:center;gap:8px;padding:11px 12px;border-radius:12px;border:2px solid var(--line);
+  background:var(--panel2);font-weight:800;font-size:.8rem;letter-spacing:.08em;color:var(--txt)}
+.hchip .dot{width:14px;height:14px;border-radius:50%;background:var(--hc);box-shadow:0 0 10px var(--hc)}
+.hchip.on{border-color:var(--hc);box-shadow:0 0 0 2px color-mix(in srgb,var(--hc) 40%,transparent)}
+.info-card{background:var(--panel);border:1px solid var(--line);border-radius:20px;margin-top:22px;overflow:hidden}
+.info-card summary{padding:18px 20px;font-weight:900;letter-spacing:.08em;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center}
+.info-card summary::after{content:'▾';color:var(--dim)}
+.info-card[open] summary::after{content:'▴'}
+.info-body{padding:0 20px 22px;color:var(--dim);font-size:.9rem;line-height:1.65}
+.info-body h4{color:var(--txt);margin:18px 0 8px;font-size:.95rem;letter-spacing:.1em;text-transform:uppercase}
+.info-body h4:first-child{margin-top:4px}
+.info-body ul,.info-body ol{padding-left:20px}
+.info-body li{margin:5px 0}
+.info-body code{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:2px 7px;color:var(--accent);font-size:.82em}
+.info-body b{color:var(--txt)}
+.info-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px 26px}
+.login-foot{text-align:center;color:var(--dim);font-size:.75rem;margin-top:26px;letter-spacing:.14em;text-transform:uppercase}
+
+/* ══════════════ SHARED TOPBAR ══════════════ */
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:10px;padding:12px 14px;
+  background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.topbar .ttl{font-weight:900;letter-spacing:.08em;font-size:.95rem}
+.topbar .grow{flex:1}
+.iconbtn{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--txt);font-size:1.1rem;display:grid;place-items:center}
+.netchip{font-size:.68rem;font-weight:800;letter-spacing:.1em;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel);white-space:nowrap}
+.netchip.ok{border-color:#1d5c35;color:#4ade80}
+.netchip.warn{border-color:#7c5226;color:#ffb86b}
+.livedot{width:9px;height:9px;border-radius:50%;background:#4ade80;box-shadow:0 0 10px #4ade80;display:inline-block;animation:blink 1.6s infinite}
+@keyframes blink{50%{opacity:.35}}
+
+/* ══════════════ SCREEN (light “normal” TV theme) ══════════════ */
+#view-screen{background:linear-gradient(180deg,#f6f8fd 0%,#eaf0f9 100%)}
+.sc-wrap{max-width:1400px;margin:0 auto;padding:18px clamp(12px,2.5vw,32px) 40px}
+.sc-hero{text-align:center;padding:clamp(6px,1.5vw,20px) 8px clamp(10px,2vw,24px)}
+.sc-hero h1{font-family:'Archivo',var(--font);font-weight:900;font-size:clamp(1.5rem,3.6vw,3rem);letter-spacing:.02em;color:#0b1220}
+.sc-hero h1 .gold{background:linear-gradient(90deg,#b07d16,#e0a728);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sc-hero .sub{color:#667085;letter-spacing:.24em;font-size:clamp(.6rem,1.2vw,.85rem);text-transform:uppercase;margin-top:6px}
+.sc-main{display:grid;grid-template-columns:1.15fr 1fr;gap:clamp(12px,2vw,24px)}
+@media(max-width:920px){.sc-main{grid-template-columns:1fr}}
+.sc-stage{background:#fff;border:1px solid var(--line);border-radius:24px;padding:clamp(16px,2.4vw,30px);
+  box-shadow:0 20px 50px -30px rgba(16,24,40,.35);position:relative;overflow:hidden}
+.sc-stage::before{content:'';position:absolute;inset:0 0 auto 0;height:6px;background:linear-gradient(90deg,var(--red),var(--orange),var(--green),var(--blue))}
+.sc-comp{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.sc-status{text-align:center;padding:clamp(14px,2.4vw,28px) 8px;border-radius:18px;background:var(--panel2);
+  border:1px dashed var(--line);margin:10px 0 16px;transition:background .3s}
+.sc-status .big{font-family:'Archivo',var(--font);font-weight:900;font-size:clamp(1.5rem,4.2vw,3.2rem);letter-spacing:.03em;color:#0b1220;line-height:1.05}
+.sc-status .small{color:#667085;margin-top:8px;font-size:clamp(.75rem,1.6vw,.95rem)}
+.sc-status.armed{background:#fff7e6;border-color:#f2c94c;animation:armedPulse 1s infinite}
+.sc-status.armed .big{color:#b45309}
+@keyframes armedPulse{50%{box-shadow:inset 0 0 0 4px rgba(242,201,76,.35)}}
+.sc-status.locked{background:#0b1220;border-color:#0b1220}
+.sc-status.locked .big{color:#fff}
+.sc-status.locked .small{color:#cbd5e1}
+.sc-status.win{background:linear-gradient(135deg,#ecfdf3,#f0fdf4);border-color:#86efac}
+.sc-status.win .big{color:#15803d}
+.sc-word{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:14px 0 4px}
+.sc-word .lt{min-width:clamp(26px,3.4vw,44px);height:clamp(34px,4.4vw,56px);border-radius:10px;display:grid;place-items:center;
+  font-weight:900;font-size:clamp(1.1rem,2.6vw,1.9rem);border:2px solid var(--line);background:var(--panel2);color:#0b1220;font-family:'Archivo'}
+.sc-word .lt.blank{background:repeating-linear-gradient(135deg,#f2f4f9 0 6px,#e9edf5 6px 12px)}
+.sc-buzzes{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px}
+.bz-chip{padding:8px 14px;border-radius:999px;font-weight:800;font-size:clamp(.7rem,1.5vw,.9rem);letter-spacing:.06em;
+  background:#fff;border:2px solid var(--hc);color:var(--hc)}
+.bz-chip.first{background:var(--hc);color:#fff;box-shadow:0 8px 22px -10px var(--hc)}
+.sc-board h2,.sc-sec-h{font-size:clamp(.85rem,1.6vw,1.05rem);font-weight:900;letter-spacing:.16em;text-transform:uppercase;color:#344054;margin:0 6px 12px;display:flex;align-items:center;gap:8px}
+.sc-cards{display:flex;flex-direction:column;gap:clamp(8px,1.2vw,14px)}
+.sc-card{display:flex;align-items:center;gap:clamp(10px,1.6vw,18px);background:#fff;border:1px solid var(--line);
+  border-radius:18px;padding:clamp(10px,1.6vw,18px) clamp(12px,1.8vw,20px);box-shadow:0 12px 30px -24px rgba(16,24,40,.4);
+  border-left:8px solid var(--hc);transition:transform .35s cubic-bezier(.2,.9,.3,1.4)}
+.sc-card.lead{transform:scale(1.02);box-shadow:0 18px 40px -22px color-mix(in srgb,var(--hc) 45%,transparent)}
+.sc-rank{font-family:'Archivo';font-weight:900;font-size:clamp(1rem,2.2vw,1.6rem);color:#98a2b3;width:1.6em;text-align:center}
+.sc-card .hdot{width:clamp(30px,4vw,44px);height:clamp(30px,4vw,44px);border-radius:50%;background:radial-gradient(circle at 30% 30%,#ffffff88,transparent 40%),var(--hc);box-shadow:0 6px 16px -6px var(--hc)}
+.sc-name{font-weight:900;font-size:clamp(.95rem,2.2vw,1.5rem);color:#101828;letter-spacing:.04em;flex:1}
+.sc-connect{font-size:.68rem;font-weight:700;color:#98a2b3;display:block;letter-spacing:.06em}
+.sc-connect.on{color:#16a34a}
+.sc-score{font-family:'Archivo';font-weight:900;font-size:clamp(1.8rem,4.2vw,3.2rem);color:var(--hc);min-width:1.6em;text-align:right;line-height:1}
+.sc-score small{display:block;font-size:.55rem;color:#98a2b3;letter-spacing:.2em;font-family:var(--font)}
+.bump{animation:bump .5s}
+@keyframes bump{40%{transform:scale(1.25)}}
+.sc-ticker{margin-top:14px;text-align:center;color:#667085;font-size:clamp(.7rem,1.4vw,.9rem);min-height:1.4em}
+.sc-info{margin-top:clamp(18px,3vw,34px)}
+.sc-info .info-card{background:#fff;border-color:var(--line)}
+.sc-info .info-body{color:#475467}
+.sc-info .info-body h4{color:#101828}
+.sc-info .info-body b{color:#101828}
+.sc-info .info-body code{background:#f2f4f9;border-color:#e4e9f2;color:#b4530a}
+.sc-foot{text-align:center;color:#98a2b3;font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;padding:26px 0 8px}
+.celebrate{position:fixed;inset:0;z-index:80;display:grid;place-items:center;pointer-events:none;
+  background:color-mix(in srgb,var(--hc,#22c55e) 18%,rgba(255,255,255,.6));backdrop-filter:blur(3px)}
+.celebrate .inner{text-align:center;animation:pop .5s cubic-bezier(.2,1.4,.3,1)}
+.celebrate .h{font-family:'Archivo';font-weight:900;font-size:clamp(2rem,7vw,5rem);color:var(--hc,#15803d);text-shadow:0 4px 0 rgba(0,0,0,.08)}
+.celebrate .p{font-weight:900;font-size:clamp(1.2rem,3.5vw,2.4rem);color:#0b1220;letter-spacing:.1em}
+@keyframes pop{from{transform:scale(.4);opacity:0}}
+.wrongflash{position:fixed;inset:0;z-index:80;display:grid;place-items:center;pointer-events:none;background:rgba(220,38,38,.12)}
+.wrongflash .h{font-family:'Archivo';font-weight:900;font-size:clamp(2rem,7vw,5rem);color:#dc2626;animation:pop .4s}
+.sc-offline{position:sticky;top:64px;z-index:60;margin:10px auto;max-width:1400px;padding:0 16px}
+.offbanner{background:#fff4f4;border:1px solid #fecaca;color:#b42318;font-weight:800;letter-spacing:.08em;
+  border-radius:14px;padding:12px 16px;text-align:center;font-size:.85rem}
+
+/* ══════════════ CONTROLLER ══════════════ */
+.ctl-wrap{max-width:760px;margin:0 auto;padding:14px 14px 90px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
+.card h3{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.roundrow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.rchip{padding:12px 6px;border-radius:12px;border:2px solid var(--line);background:var(--panel2);color:var(--dim);
+  font-weight:800;font-size:.72rem;letter-spacing:.08em;text-align:center}
+.rchip.on{border-color:#e5e7eb;color:#fff;background:linear-gradient(180deg,#3a3f45,#23262b);box-shadow:0 6px 18px -8px #000}
+.wordwrap{display:flex;gap:8px}
+.wordwrap input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:12px;color:#fff;
+  padding:14px;font-size:1.3rem;font-weight:800;letter-spacing:.22em;text-transform:uppercase;text-align:center;font-family:'Archivo'}
+.wordwrap input:focus{outline:2px solid var(--accent)}
+.ctlbigbtn{width:100%;padding:18px;border-radius:16px;font-size:1.1rem;font-weight:900;letter-spacing:.1em;border:none;
+  background:linear-gradient(180deg,#3b4046,#22252a);color:#fff;box-shadow:0 10px 26px -12px #000;border:1px solid #3f444b;margin-top:10px}
+.ctlbigbtn:disabled{opacity:.4}
+.ctl-status{background:var(--bg);border:1px dashed var(--line);border-radius:14px;padding:14px;text-align:center;margin-bottom:12px}
+.ctl-status .a{font-weight:900;font-size:1.25rem;letter-spacing:.05em}
+.ctl-status .b{color:var(--dim);font-size:.8rem;margin-top:4px}
+.ctl-status.buzzed{border:2px solid var(--hc,#fff);background:color-mix(in srgb,var(--hc,#fff) 12%,var(--bg))}
+.ctl-status.buzzed .a{color:var(--hc,#fff)}
+.ansrow{display:flex;gap:8px}
+.ansrow input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:12px;color:#fff;padding:13px 14px;
+  font-size:1.15rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;text-align:center}
+.ansrow input:focus{outline:2px solid var(--accent)}
+.match{text-align:center;font-weight:900;letter-spacing:.1em;margin-top:8px;min-height:1.3em;font-size:.9rem}
+.match.ok{color:#4ade80}.match.no{color:#ff8fa0}
+.verdictrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.verdictrow .btn{padding:16px}
+.scoretable{display:grid;gap:8px}
+.srow{display:grid;grid-template-columns:auto 1fr auto auto auto;align-items:center;gap:10px;background:var(--panel2);
+  border:1px solid var(--line);border-left:6px solid var(--hc);border-radius:12px;padding:8px 12px}
+.srow .nm{font-weight:800;font-size:.85rem;letter-spacing:.06em}
+.srow .pt{font-family:'Archivo';font-weight:900;font-size:1.5rem;color:var(--hc);text-align:center;min-width:2em}
+.sqbtn{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:1.2rem;font-weight:900}
+.devrow{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px dashed var(--line);font-size:.88rem}
+.devrow:last-child{border:none}
+.devdot{width:10px;height:10px;border-radius:50%;background:#3a3f45}
+.devdot.on{background:#4ade80;box-shadow:0 0 8px #4ade80}
+.devdot.host{background:#e5e7eb;box-shadow:0 0 8px #e5e7eb}
+.loglist{max-height:220px;overflow:auto;display:flex;flex-direction:column-reverse;gap:6px}
+.logitem{font-size:.8rem;color:var(--dim);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.logitem b{color:var(--txt)}
+.compcard{display:flex;gap:10px;align-items:center;border:2px solid var(--line);border-radius:14px;padding:13px 14px;background:var(--panel2);font-weight:800}
+.compcard.on{border-color:#e5e7eb;box-shadow:0 0 0 3px rgba(229,231,235,.12)}
+.compcard.soon{opacity:.45}
+.complist{display:grid;gap:8px}
+.quicklinks{display:flex;gap:8px;flex-wrap:wrap}
+.quicklinks a{color:var(--txt);text-decoration:none;font-size:.75rem;font-weight:700;letter-spacing:.08em;border:1px solid var(--line);
+  border-radius:10px;padding:9px 12px;background:var(--panel2)}
+.roomdisp{font-family:'Archivo';font-weight:900;font-size:1.6rem;letter-spacing:.3em;text-align:center;padding:8px;background:var(--bg);border:1px dashed var(--line);border-radius:12px;margin-bottom:8px}
+
+/* ══════════════ HOUSE ══════════════ */
+.hs-wrap{max-width:560px;margin:0 auto;padding:14px 16px 80px;display:flex;flex-direction:column;min-height:calc(100vh - 68px)}
+.hs-banner{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;text-align:center;margin:8px 0 14px}
+.hs-banner .a{font-weight:900;font-size:1.15rem;letter-spacing:.06em}
+.hs-banner .b{color:var(--dim);font-size:.8rem;margin-top:4px}
+.hs-banner.armed{border:2px solid #f2c94c;background:color-mix(in srgb,#f2c94c 12%,var(--panel))}
+.hs-banner.win{border:2px solid #4ade80;background:color-mix(in srgb,#4ade80 14%,var(--panel))}
+.hs-banner.out{border:2px solid #ef4444;background:color-mix(in srgb,#ef4444 12%,var(--panel))}
+.hs-score-row{display:flex;gap:10px;margin-bottom:14px}
+.hs-score{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;text-align:center}
+.hs-score .n{font-family:'Archivo';font-weight:900;font-size:2.2rem;color:var(--accent);line-height:1}
+.hs-score .l{font-size:.66rem;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;margin-top:4px}
+.buzzzone{flex:1;display:grid;place-items:center;padding:10px 0 22px}
+.buzzer{position:relative;width:min(72vw,320px);aspect-ratio:1;border-radius:50%;border:none;
+  background:radial-gradient(circle at 32% 28%,color-mix(in srgb,var(--accent) 75%,#fff),var(--accent) 45%,var(--accent2));
+  color:#fff;font-family:'Archivo';font-weight:900;font-size:clamp(1.4rem,7vw,2.3rem);letter-spacing:.1em;
+  box-shadow:0 18px 50px -12px color-mix(in srgb,var(--accent) 80%,transparent), inset 0 -14px 0 rgba(0,0,0,.28), inset 0 8px 0 rgba(255,255,255,.22);
+  transition:transform .07s, filter .2s, opacity .3s; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none}
+.buzzer:active{transform:translateY(4px) scale(.97);box-shadow:0 10px 30px -12px color-mix(in srgb,var(--accent) 80%,transparent), inset 0 -6px 0 rgba(0,0,0,.28)}
+.buzzer:disabled{filter:grayscale(1) brightness(.5);box-shadow:none;font-size:clamp(1rem,5vw,1.4rem)}
+.buzzer.armed::before{content:'';position:absolute;inset:-14px;border-radius:50%;border:4px solid var(--accent);
+  animation:ring 1s infinite;pointer-events:none}
+@keyframes ring{from{transform:scale(.92);opacity:1}to{transform:scale(1.14);opacity:0}}
+.buzzer .sub{display:block;font-family:var(--font);font-weight:700;font-size:.7rem;letter-spacing:.24em;opacity:.85;margin-top:4px}
+.hs-mini{margin-top:6px}
+.hs-mini .logitem{background:var(--panel);border-color:var(--line);color:var(--dim)}
+.hs-mini .logitem b{color:var(--txt)}
+.hs-word{text-align:center;color:var(--dim);font-size:.85rem;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px}
+.hs-word b{color:var(--txt);letter-spacing:.2em}
+.overlay-block{position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:rgba(0,0,0,.86);backdrop-filter:blur(6px);padding:22px}
+.overlay-block .box{max-width:420px;width:100%;background:var(--panel,#12151a);border:1px solid var(--line,#262c34);border-radius:20px;padding:24px;text-align:center}
+.overlay-block h2{font-size:1.3rem;letter-spacing:.05em;margin-bottom:8px}
+.overlay-block p{color:var(--dim,#8b939e);font-size:.9rem;margin-bottom:16px;line-height:1.5}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:95;background:#101828;color:#fff;
+  border-radius:999px;padding:12px 20px;font-weight:800;letter-spacing:.06em;font-size:.85rem;box-shadow:0 12px 40px -10px #000;animation:pop .3s}
+#confettiCanvas{position:fixed;inset:0;pointer-events:none;z-index:70}
+@media(max-width:560px){
+  .roundrow{grid-template-columns:1fr 1fr}
+  .verdictrow{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body data-theme="login">
+<canvas id="confettiCanvas"></canvas>
+
+<!-- ══════════════ LOGIN ══════════════ -->
+<section id="view-login" class="view active">
+  <div class="login-wrap">
+    <header class="brand">
+      <div class="brand-badge">🏆</div>
+      <h1>RBS <span>INTER-HOUSE</span> CHAMPIONSHIP</h1>
+      <p class="tag">Live buzzer arena · Spelling Bee &amp; more</p>
+    </header>
+
+    <div class="room-card">
+      <label for="roomInput">🛰 ROOM CODE <span class="hint">(every device must type the same code)</span></label>
+      <div class="room-row">
+        <input id="roomInput" maxlength="8" placeholder="LOCAL" autocomplete="off" spellcheck="false">
+        <button id="btnGenRoom" class="btn ghost">🎲</button>
+      </div>
+      <p class="mini">Using ONE computer (projector + several tabs)? Leave it <b>LOCAL</b>. Using many phones/laptops on the same Wi-Fi or hotspot? Tap 🎲 on the first device and type that code on every device. See “How it connects” below.</p>
+    </div>
+
+    <div class="role-grid">
+      <!-- SCREEN -->
+      <div class="role-card" data-role="screen">
+        <h3>📺 SCREEN</h3>
+        <p class="sub">The big display for audience. Unlimited users · no password. Optimised for TVs, projectors &amp; phones.</p>
+        <button class="btn block" data-join="screen">OPEN SCREEN</button>
+      </div>
+
+      <!-- CONTROLLER -->
+      <div class="role-card" data-role="controller">
+        <h3>🎛️ CONTROLLER</h3>
+        <p class="sub">Runs the whole show. Only 1 controller can be online. Requires password.</p>
+        <button class="btn block" data-pwopen="controller">ENTER PASSWORD</button>
+        <div class="pwbox hidden" id="pw-controller">
+          <input id="in-controller-pw" type="password" placeholder="CONTROLLER PASSWORD" autocomplete="off">
+          <button class="btn block" data-join="controller">OPEN CONTROL DESK</button>
+          <p class="err" id="err-controller"></p>
+        </div>
+      </div>
+
+      <!-- HOUSE -->
+      <div class="role-card" data-role="house">
+        <h3>🏠 HOUSES</h3>
+        <p class="sub">Buzzer console for each house team. Only 1 device per house. Password = house name in CAPITALS.</p>
+        <div class="house-pick" id="housePick">
+          <button class="hchip" data-house="red"><span class="dot" style="--hc:var(--red)"></span>RED</button>
+          <button class="hchip" data-house="blue"><span class="dot" style="--hc:var(--blue)"></span>BLUE</button>
+          <button class="hchip" data-house="green"><span class="dot" style="--hc:var(--green)"></span>GREEN</button>
+          <button class="hchip" data-house="orange"><span class="dot" style="--hc:var(--orange)"></span>ORANGE</button>
+        </div>
+        <div id="pw-house" class="pwbox hidden">
+          <input id="in-house-pw" type="password" placeholder="HOUSE PASSWORD" autocomplete="off">
+          <button class="btn block" data-join="house">JOIN AS <span id="houseJoinName">—</span></button>
+          <p class="err" id="err-house"></p>
+        </div>
+        <p class="mini" id="housePickHint">Pick your house colour first ☝️</p>
+      </div>
+    </div>
+
+    <details class="info-card" id="loginInfo">
+      <summary>🛰 HOW ALL DEVICES CONNECT (NO SERVER) &nbsp;+&nbsp; FULL WORK / FEATURE LIST</summary>
+      <div class="info-body" id="infoBodyLogin"></div>
+    </details>
+
+    <footer class="login-foot">Built for RBS · Inter-House Competitions · v1.0</footer>
+  </div>
+</section>
+
+<!-- ══════════════ SCREEN ══════════════ -->
+<section id="view-screen" class="view">
+  <div class="topbar">
+    <span class="livedot"></span><span class="ttl">LIVE</span>
+    <span class="chip" id="sc-roomChip">ROOM: LOCAL</span>
+    <span class="grow"></span>
+    <button class="iconbtn" id="sc-mute" title="Sound">🔊</button>
+    <button class="iconbtn" id="sc-full" title="Fullscreen">⛶</button>
+    <button class="iconbtn" id="sc-exit" title="Exit">✕</button>
+  </div>
+
+  <div class="sc-offline hidden" id="sc-offline"><div class="offbanner">⚠ CONTROLLER OFFLINE — waiting for the Control Desk to come back…</div></div>
+
+  <div class="sc-wrap">
+    <div class="sc-hero">
+      <h1>🏆 RBS <span class="gold">INTER-HOUSE</span> CHAMPIONSHIP</h1>
+      <div class="sub" id="sc-heroSub">Live Buzzer Arena</div>
+    </div>
+
+    <div class="sc-main">
+      <!-- STAGE -->
+      <div class="sc-stage">
+        <div class="sc-comp">
+          <span class="chip" id="sc-comp">🏁 WAITING TO START</span>
+          <span class="chip" id="sc-round" style="border-color:#111;color:#111;background:#111;color:#fff">—</span>
+        </div>
+        <div class="sc-status" id="sc-status">
+          <div class="big" id="sc-statusBig">WAITING FOR CONTROLLER…</div>
+          <div class="small" id="sc-statusSmall">The game cannot start until the Controller logs in.</div>
+        </div>
+        <div class="sc-word" id="sc-word"></div>
+        <div class="sc-buzzes" id="sc-buzzes"></div>
+        <div class="sc-ticker" id="sc-ticker"></div>
+      </div>
+
+      <!-- LEADERBOARD -->
+      <div class="sc-board">
+        <h2>🏅 LIVE LEADERBOARD</h2>
+        <div class="sc-cards" id="sc-cards"></div>
+      </div>
+    </div>
+
+    <!-- INFO SECTION (bottom of screen, as requested) -->
+    <div class="sc-info">
+      <h2 class="sc-sec-h">ℹ️ INFO — HOW IT CONNECTS, WORK &amp; FEATURES</h2>
+      <details class="info-card" open id="screenInfo">
+        <summary>🛰 “HOW DO ALL DEVICES CONNECT WITHOUT A SERVER?” — tap to open the full guide</summary>
+        <div class="info-body" id="infoBodyScreen"></div>
+      </details>
+    </div>
+
+    <footer class="sc-foot">RBS INTER-HOUSE CHAMPIONSHIP · LIVE DISPLAY</footer>
+  </div>
+</section>
+
+<!-- ══════════════ CONTROLLER ══════════════ -->
+<section id="view-controller" class="view">
+  <div class="topbar">
+    <span class="ttl">🎛️ CONTROL DESK</span>
+    <span class="netchip warn" id="ctl-net">LOCAL TABS ONLY</span>
+    <span class="grow"></span>
+    <button class="iconbtn" id="ctl-mute">🔊</button>
+    <button class="iconbtn" id="ctl-exit">✕</button>
+  </div>
+
+  <div class="ctl-wrap">
+    <div class="card">
+      <h3>🛰 Room &amp; Devices</h3>
+      <div class="roomdisp" id="ctl-room">LOCAL</div>
+      <div class="mini" style="text-align:center;margin-bottom:10px">Every device (screen + 4 houses) must use this same code.</div>
+      <div class="quicklinks">
+        <a id="ctl-openScreen" target="_blank" rel="noopener">📺 Open SCREEN in new tab</a>
+        <a id="ctl-openHouse" target="_blank" rel="noopener">🏠 Open HOUSE login in new tab</a>
+      </div>
+      <div style="height:10px"></div>
+      <div id="ctl-devices"></div>
+    </div>
+
+    <div class="card">
+      <h3>🏁 Competitions <span class="mini" style="margin:0">(more coming in future updates)</span></h3>
+      <div class="complist">
+        <button class="compcard on" id="comp-spelling">🐝&nbsp; SPELLING BEE <span class="mini" style="margin-left:auto;margin:0 0 0 auto">ACTIVE</span></button>
+        <button class="compcard soon" disabled>❓&nbsp; RAPID QUIZ — coming soon</button>
+        <button class="compcard soon" disabled>🎨&nbsp; ART &amp; CRAFT — coming soon</button>
+        <button class="compcard soon" disabled>🏅&nbsp; SPORTS LEAGUE — coming soon</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🔤 Round Setup</h3>
+      <div class="roundrow" id="roundRow">
+        <button class="rchip" data-round="EASY">🟢 EASY</button>
+        <button class="rchip" data-round="HARD">🟡 HARD</button>
+        <button class="rchip" data-round="DIFFICULT">🟠 DIFFICULT</button>
+        <button class="rchip" data-round="RAPID FIRE">🔥 RAPID FIRE</button>
+      </div>
+      <div style="height:12px"></div>
+      <div class="wordwrap">
+        <input id="ctl-word" placeholder="TYPE THE SPELLING WORD" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="mini" style="text-align:center;margin-top:6px">The word is auto-CAPITALISED and stays hidden on screens until you reveal it.</div>
+      <button class="ctlbigbtn" id="ctl-arm">⚡ ARM BUZZERS — START ROUND</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
+        <button class="btn ghost" id="ctl-reveal">👁 REVEAL WORD</button>
+        <button class="btn ghost" id="ctl-next">⏭ NEXT WORD</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🚨 Live Buzzer &amp; Answer</h3>
+      <div class="ctl-status" id="ctl-status">
+        <div class="a" id="ctl-statusA">IDLE</div>
+        <div class="b" id="ctl-statusB">Pick a round, type a word, then arm the buzzers.</div>
+      </div>
+      <div class="sc-buzzes" id="ctl-buzzes"></div>
+      <div style="height:10px"></div>
+      <div class="ansrow">
+        <input id="ctl-answer" placeholder="TYPE WHAT THE HOUSE ANSWERED…" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="match" id="ctl-match"></div>
+      <div class="verdictrow">
+        <button class="btn good" id="ctl-correct" disabled>✓ CORRECT · +1 PT</button>
+        <button class="btn danger" id="ctl-wrong" disabled>✗ WRONG · RE-OPEN BUZZERS</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🏅 Scoreboard</h3>
+      <div class="scoretable" id="ctl-scores"></div>
+    </div>
+
+    <div class="card">
+      <h3>📜 Activity Log</h3>
+      <div class="loglist" id="ctl-log"></div>
+    </div>
+
+    <div class="card">
+      <h3>⚠ Danger Zone</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <button class="btn warn" id="ctl-resetScores">RESET SCORES</button>
+        <button class="btn danger" id="ctl-resetAll">RESET ENTIRE GAME</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ HOUSE ══════════════ -->
+<section id="view-house" class="view">
+  <div class="topbar">
+    <span class="ttl" id="hs-title">🏠 HOUSE</span>
+    <span class="netchip warn" id="hs-net">…</span>
+    <span class="grow"></span>
+    <button class="iconbtn" id="hs-mute">🔊</button>
+    <button class="iconbtn" id="hs-exit">✕</button>
+  </div>
+
+  <div class="hs-wrap">
+    <div class="hs-banner" id="hs-banner">
+      <div class="a" id="hs-bannerA">CONNECTING…</div>
+      <div class="b" id="hs-bannerB">Finding the Control Desk</div>
+    </div>
+
+    <div class="hs-score-row">
+      <div class="hs-score"><div class="n" id="hs-score">0</div><div class="l" id="hs-scoreL">My Points</div></div>
+      <div class="hs-score"><div class="n" id="hs-rank">—</div><div class="l">Rank</div></div>
+      <div class="hs-score"><div class="n" id="hs-roundIcon">🐝</div><div class="l" id="hs-roundName">No Round</div></div>
+    </div>
+
+    <div class="hs-word" id="hs-word"></div>
+
+    <div class="buzzzone">
+      <button class="buzzer" id="hs-buzzer" disabled>STANDBY<span class="sub">wait for controller</span></button>
+    </div>
+
+    <div class="hs-mini loglist" id="hs-log"></div>
+  </div>
+</section>
+
+<div id="overlay" class="overlay-block hidden"><div class="box">
+  <h2 id="ov-title">BLOCKED</h2>
+  <p id="ov-text"></p>
+  <button class="btn block" id="ov-back">← BACK TO LOGIN</button>
+</div></div>
+<div id="celebrate" class="celebrate hidden"><div class="inner"><div class="h" id="cel-h">RED HOUSE</div><div class="p" id="cel-p">+1 POINT ✓</div></div></div>
+<div id="wrongflash" class="wrongflash hidden"><div class="h">✗ WRONG</div></div>
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+/* ════════════════════════════════════════════════════════════════
+   RBS INTER-HOUSE CHAMPIONSHIP — app logic (single file, no framework)
+   ════════════════════════════════════════════════════════════════ */
+(() => { 'use strict';
+
+/* ---------- config ---------- */
+const HOUSES = {
+  red:   { id:'red',    name:'RED HOUSE',    color:'#ff4757', password:'RED'    },
+  blue:  { id:'blue',   name:'BLUE HOUSE',   color:'#3b82f6', password:'BLUE'   },
+  green: { id:'green',  name:'GREEN HOUSE',  color:'#22c55e', password:'GREEN'  },
+  orange:{ id:'orange', name:'ORANGE HOUSE', color:'#fb923c', password:'ORANGE' },
+};
+const ROUNDS = ['EASY','HARD','DIFFICULT','RAPID FIRE'];
+const CTRL_PW = 'PASSWORD0011';
+const SID = Math.random().toString(36).slice(2,10);          // per-tab session id
+const HB_MS = 2500;      // heartbeat interval
+const FRESH_MS = 9000;   // lock freshness window
+const CTRL_GONE_MS = 12000;
+
+/* ---------- tiny helpers ---------- */
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const el = id => document.getElementById(id);
+const clean = s => (s||'').toUpperCase().replace(/[^A-Z]/g,'');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let TOAST_T=null;
+function toast(msg){ const t=el('toast'); t.textContent=msg; t.classList.remove('hidden');
+  clearTimeout(TOAST_T); TOAST_T=setTimeout(()=>t.classList.add('hidden'),2200); }
+function vibrate(ms){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_){}}
+
+/* ---------- sound (no files — pure WebAudio) ---------- */
+const SFX = (() => {
+  let ctx=null, muted = localStorage.getItem('rbs-muted')==='1';
+  function ac(){ if(!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
+    if(ctx.state==='suspended') ctx.resume(); return ctx; }
+  function tone(f,d,type='sine',g=.12,when=0,slide){ if(muted) return;
+    try{ const a=ac(),o=a.createOscillator(),v=a.createGain();
+      o.type=type; o.frequency.setValueAtTime(f,a.currentTime+when);
+      if(slide) o.frequency.exponentialRampToValueAtTime(slide,a.currentTime+when+d);
+      v.gain.setValueAtTime(g,a.currentTime+when);
+      v.gain.exponentialRampToValueAtTime(.0001,a.currentTime+when+d);
+      o.connect(v).connect(a.destination); o.start(a.currentTime+when); o.stop(a.currentTime+when+d+.02);
+    }catch(_){}}
+  return {
+    get muted(){return muted},
+    toggle(){ muted=!muted; localStorage.setItem('rbs-muted',muted?'1':'0'); return muted; },
+    click(){tone(620,.05,'square',.05)},
+    arm(){tone(440,.1,'square',.09); tone(880,.16,'square',.09,.09)},
+    buzz(){tone(230,.3,'sawtooth',.16,0,110)},
+    first(){tone(523,.14,'triangle',.15); tone(784,.25,'triangle',.15,.12)},
+    correct(){tone(523,.12,'triangle',.15); tone(659,.12,'triangle',.15,.1); tone(880,.22,'triangle',.16,.2)},
+    wrong(){tone(190,.35,'sawtooth',.15,0,90)},
+    reveal(){tone(392,.1,'sine',.1); tone(587,.16,'sine',.1,.08)},
+  };
+})();
+function syncMuteButtons(){ ['sc-mute','ctl-mute','hs-mute'].forEach(id=>{ const b=el(id); if(b) b.textContent = SFX.muted?'🔇':'🔊'; }); }
+
+/* ---------- confetti ---------- */
+const Confetti = (() => {
+  const cv = el('confettiCanvas'), cx = cv.getContext('2d');
+  let parts=[], raf=null;
+  function size(){ cv.width=innerWidth; cv.height=innerHeight; }
+  addEventListener('resize',size); size();
+  function burst(color){
+    for(let i=0;i<140;i++) parts.push({
+      x: innerWidth/2 + (Math.random()-.5)*innerWidth*.3,
+      y: innerHeight*.32,
+      vx:(Math.random()-.5)*12, vy:-Math.random()*11-3,
+      s: Math.random()*8+4, r: Math.random()*Math.PI,
+      c: Math.random()<.6 ? color : ['#ffd166','#ffffff','#34d399','#f472b6'][Math.floor(Math.random()*4)],
+      vr:(Math.random()-.5)*.3, life: 90+Math.random()*40
+    });
+    if(!raf) loop();
+  }
+  function loop(){ raf=requestAnimationFrame(loop);
+    cx.clearRect(0,0,cv.width,cv.height);
+    parts=parts.filter(p=>p.life>0 && p.y<innerHeight+40);
+    if(!parts.length){ cancelAnimationFrame(raf); raf=null; return; }
+    for(const p of parts){ p.life--; p.x+=p.vx; p.y+=p.vy; p.vy+=.28; p.r+=p.vr;
+      cx.save(); cx.translate(p.x,p.y); cx.rotate(p.r); cx.fillStyle=p.c;
+      cx.globalAlpha=Math.min(1,p.life/40); cx.fillRect(-p.s/2,-p.s/2,p.s,p.s*.62); cx.restore(); }
+  }
+  return { burst };
+})();
+
+/* ---------- shared info text (login + bottom of SCREEN) ---------- */
+function infoHTML(){
+  return `
+  <h4>🛰 “How do devices connect without a server?”</h4>
+  <p>Honest answer: a browser page <b>cannot see other devices by itself</b> — every browser in the world is blocked from doing that (for security). This website therefore uses <b>two clever zero-server tricks</b> built into modern browsers:</p>
+  <ol>
+    <li><b>Mode 1 — ONE computer, many tabs/windows (100% offline, no internet, no LAN needed).</b><br>
+    Open this same file in several tabs on the computer plugged into the projector/TV: one tab = <b>SCREEN</b>, another = <b>CONTROLLER</b>, others = houses. The tabs talk to each other instantly through the browser’s built-in <b>BroadcastChannel + localStorage</b>. Nothing leaves the machine.</li>
+    <li><b>Mode 2 — MANY devices on the same Wi-Fi / LAN / hotspot.</b><br>
+    Every device opens <b>this same .html file</b> and types the <b>same ROOM CODE</b>. Devices “shake hands” through a free public meet-point (PeerJS cloud — it only swaps names for a second, needs internet just at that moment), and then all game data (buzzes, scores) travels <b>directly device-to-device over your Wi-Fi (WebRTC peer-to-peer)</b>. No game server ever stores anything.</li>
+  </ol>
+  <h4>📂 How to get this file onto every device</h4>
+  <ul>
+    <li>Copy <code>index.html</code> to each phone/laptop (USB, WhatsApp “document”, Google Drive…) and open it, <b>or</b>…</li>
+    <li>Host it once on any computer in the room: open a terminal in this file’s folder and run <code>python -m http.server 8000</code>, then every device opens <code>http://YOUR-IP:8000</code>. Find YOUR-IP with <code>ipconfig</code> (Windows) or <code>ifconfig</code> (Mac/Linux). A phone hotspot works as the Wi-Fi too!</li>
+  </ul>
+  <h4>🎮 How to run the Spelling Bee</h4>
+  <div class="info-cols"><ol>
+    <li>Controller logs in with its password → picks a round → types the spelling word (auto-CAPITALS, hidden from screens) → taps <b>⚡ ARM BUZZERS</b>.</li>
+    <li>Say the word aloud. Houses smash their big buzzer — the first tap locks everyone else out and appears on the Controller + Screen with reaction time.</li>
+    <li>Controller types the house’s answer; the check turns green on a match → <b>✓ CORRECT (+1)</b> or <b>✗ WRONG</b> (buzzers re-open, that house is locked out for this word).</li>
+    <li>Rounds: EASY → HARD → DIFFICULT → RAPID FIRE. Scores, buzz order and the live leaderboard update everywhere instantly.</li>
+  </ol>
+  <h4>✅ Work &amp; features in this build</h4>
+  <ul>
+    <li>Single <code>.html</code> file — no install, no framework, no backend.</li>
+    <li>3 roles: <b>SCREEN</b> (unlimited), <b>CONTROLLER</b> (1 user, password <code>PASSWORD0011</code>), <b>HOUSES</b> (1 device each, passwords <code>RED</code> / <code>BLUE</code> / <code>GREEN</code> / <code>ORANGE</code>). Game refuses to start without the Controller online.</li>
+    <li>Duplicate-locking: a 2nd controller or a 2nd device for the same house is blocked (live heartbeats), with auto-reconnect when one leaves.</li>
+    <li>Themes: houses = house colour on black · controller = grey + black · screen = clean light theme tuned for TV + phone.</li>
+    <li>Instant buzz lock-in with buzz order, reaction time, wrong-answer lockout &amp; re-buzz, word reveal toggle, live MATCH checker, activity log, sounds + confetti, fullscreen + mute buttons, score memory (survives refresh).</li>
+    <li>Placeholder slots for future competitions (quiz, art, sports…) — updates will unlock them.</li>
+  </ul></div>
+  <h4>🔑 Passwords (keep private)</h4>
+  <ul>
+    <li>Controller: <code>PASSWORD0011</code> · Red: <code>RED</code> · Blue: <code>BLUE</code> · Green: <code>GREEN</code> · Orange: <code>ORANGE</code></li>
+  </ul>
+  <p class="mini">Tip: keep the Controller tab open at all times — it is the “referee brain” of the whole event.</p>`;
+}
+el('infoBodyLogin').innerHTML = infoHTML();
+el('infoBodyScreen').innerHTML = infoHTML();
+
+/* ---------- message bus: same-device (BC + localStorage) ---------- */
+const Bus = {
+  room:'LOCAL', bc:null, seen:[], handlers:[],
+  chan(){ return 'rbs-bus-'+this.room; },
+  setRoom(r){ this.room = r||'LOCAL';
+    try{ this.bc && this.bc.close(); }catch(_){}
+    try{ this.bc = new BroadcastChannel(this.chan()); this.bc.onmessage = e=>this._recv(e.data); }catch(_){ this.bc=null; }
+  },
+  init(){
+    this.setRoom('LOCAL');
+    addEventListener('storage', e=>{ if(e.key===this.chan() && e.newValue){ try{ this._recv(JSON.parse(e.newValue)); }catch(_){}} });
+  },
+  publish(m){ m._id = SID+':'+Math.random().toString(36).slice(2); m._t = Date.now();
+    if(this.bc){ try{ this.bc.postMessage(m); }catch(_){}}
+    try{ localStorage.setItem(this.chan(), JSON.stringify(m)); }catch(_){}
+    Net.fanout(m);
+  },
+  _recv(m){ if(!m || !m._id || this.seen.includes(m._id)) return;
+    this.seen.push(m._id); if(this.seen.length>600) this.seen.shift();
+    this.handlers.forEach(fn=>{ try{fn(m)}catch(_){}});
+  },
+  on(fn){ this.handlers.push(fn); }
+};
+
+/* ---------- cross-device layer (PeerJS / WebRTC, room code) ---------- */
+const Net = {
+  code:null, isHost:false, peer:null, conns:[], hostConn:null,
+  status:'off', // off | hosting | joined | connecting | local
+  onchange:null,
+  label(){ switch(this.status){
+    case 'hosting': return 'HOSTING ROOM '+this.code;
+    case 'joined': return 'JOINED ROOM '+this.code;
+    case 'connecting': return 'CONNECTING…';
+    default: return 'LOCAL TABS ONLY'; } },
+  _set(st){ this.status=st; this.onchange && this.onchange(); },
+  fanout(m){ if(this.isHost){ for(const c of this.conns){ try{ c.open && c.send(m); }catch(_){}} }
+    else if(this.hostConn && this.hostConn.open){ try{ this.hostConn.send(m); }catch(_){}} },
+  host(code, onmsg, ok, fail){
+    if(typeof Peer==='undefined'){ fail && fail('no-peerjs'); return; }
+    this.code=code; this.isHost=true; this._set('connecting');
+    let settled=false;
+    try{
+      this.peer = new Peer('rbs-ihc-'+code+'-host');
+      this.peer.on('open', ()=>{ settled=true; this._set('hosting'); ok && ok(); });
+      this.peer.on('error', e=>{ if(!settled && (e.type==='unavailable-id')){ this._set('local'); fail && fail('taken'); }
+        else if(!settled){ this._set('local'); fail && fail('offline'); } });
+      this.peer.on('connection', conn=>{
+        this.conns.push(conn);
+        conn.on('data', d=>onmsg && onmsg(d));
+        conn.on('close', ()=>{ this.conns=this.conns.filter(c=>c!==conn); });
+      });
+      setTimeout(()=>{ if(!settled && this.status==='connecting'){ this._set('local'); fail && fail('slow'); } }, 9000);
+    }catch(_){ this._set('local'); fail && fail('err'); }
+  },
+  join(code, onmsg){
+    if(typeof Peer==='undefined'){ this._set('local'); return; }
+    this.code=code; this.isHost=false; this._set('connecting');
+    const tryConnect = ()=>{
+      if(this.isHost || this.code!==code) return;
+      try{
+        if(!this.peer || this.peer.destroyed){ this.peer = new Peer(); }
+        const conn = this.peer.connect('rbs-ihc-'+code+'-host', {reliable:true});
+        let opened=false;
+        conn.on('open', ()=>{ opened=true; this.hostConn=conn; this._set('joined'); });
+        conn.on('data', d=>onmsg && onmsg(d));
+        conn.on('close', ()=>{ if(this.hostConn===conn){ this.hostConn=null; this._set('connecting'); setTimeout(tryConnect, 3500); } });
+        conn.on('error', ()=>{});
+        setTimeout(()=>{ if(!opened && this.status==='connecting'){ try{conn.close();}catch(_){}} setTimeout(tryConnect, 3500); }, 5000);
+      }catch(_){ setTimeout(tryConnect, 5000); }
+    };
+    tryConnect();
+  },
+  stop(){ try{ this.peer && this.peer.destroy(); }catch(_){}
+    this.peer=null; this.conns=[]; this.hostConn=null; this.isHost=false; this._set('off'); }
+};
+
+/* ---------- game state ---------- */
+function defaultState(){ return {
+  v:1, ctrlSid:null,
+  competition:'spelling',
+  round:null, word:'', revealWord:false,
+  status:'idle',           // idle | armed | locked
+  buzzed:null, buzzT:0, armT:0,
+  buzzes:[], tried:[],
+  scores:{red:0,blue:0,green:0,orange:0},
+  locks:{},                // {red:{sid,t}, blue:{...}, controller:{sid,t}}
+  screens:{},              // sid -> t
+  lastEvent:null,          // {kind, house, t, extra}
+  log:[], _t:0
+};}
+let S = defaultState();
+let PREV = null;
+let MY = { role:null, house:null, room:'LOCAL' };  // role: screen|controller|house
+let granted = false, denyReason=null, lastStateT = 0, foreignCtrlSeen = 0;
+let buzzBusy = false;
+let hbTimer=null;
+
+function persist(){ if(MY.role==='controller'){ try{ localStorage.setItem('rbs-state-'+MY.room, JSON.stringify(S)); }catch(_){} } }
+function restore(){ try{ const raw=localStorage.getItem('rbs-state-'+MY.room); if(!raw) return;
+  const s=JSON.parse(raw); if(s && s.v===1){ S=s; S.ctrlSid=null; S.locks={}; S.screens={}; S.status='idle'; S.buzzed=null; S.buzzes=[]; S.tried=[]; } }catch(_){} }
+
+function commit(){ S._t=Date.now(); if(MY.role==='controller') S.ctrlSid=SID;
+  persist(); Bus.publish({type:'state', state:S}); applyState(false); }
+let commitSoonT=null;
+function commitSoon(){ clearTimeout(commitSoonT); commitSoonT=setTimeout(commit, 700); }
+
+function logLine(txt){ S.log.unshift({t:Date.now(), txt}); S.log=S.log.slice(0,30); }
+
+/* ---------- controller actions ---------- */
+function setRound(r){ if(MY.role!=='controller')return;
+  S.round=r; S.status='idle'; S.buzzed=null; S.buzzes=[]; S.tried=[]; S.revealWord=false;
+  logLine('🎯 Round set to <b>'+r+'</b>'); commit(); }
+function setWord(w){ if(MY.role!=='controller')return;
+  const word=clean(w); S.word=word; S.status='idle'; S.buzzed=null; S.buzzes=[]; S.tried=[]; S.revealWord=false; S.lastEvent=null; commit(); }
+function armBuzzers(){ if(MY.role!=='controller')return;
+  if(!S.word){ toast('Type the word first!'); return; } if(!S.round){ toast('Pick a round first!'); return; }
+  S.status='armed'; S.armT=Date.now(); S.buzzed=null; S.buzzes=[]; S.tried=[]; S.revealWord=false; S.lastEvent=null;
+  logLine('⚡ Buzzers ARMED for word ('+S.word.length+' letters) — round <b>'+S.round+'</b>'); commit(); }
+function receiveBuzz(house, t, fromSid){ if(MY.role!=='controller')return;
+  if(S.status!=='armed' && S.status!=='locked') return;
+  if(S.tried.includes(house)) return;
+  if(S.status==='locked'){ // still record order
+    if(!S.buzzes.some(b=>b.house===house) && S.buzzes.length<6){ S.buzzes.push({house, t}); commitSoon(); } return; }
+  S.buzzes=[{house,t}]; S.status='locked'; S.buzzed=house; S.buzzT=t||Date.now();
+  logLine('🚨 <b style="color:'+HOUSES[house].color+'">'+HOUSES[house].name+'</b> buzzed first! ('+(((S.buzzT-S.armT)/1000).toFixed(2))+'s)'); commit(); }
+function verdict(correct){ if(MY.role!=='controller' || !S.buzzed) return;
+  const h=S.buzzed;
+  if(correct){ S.scores[h]++; S.lastEvent={kind:'correct', house:h, t:Date.now()}; S.revealWord=true; S.status='idle';
+    logLine('✅ <b style="color:'+HOUSES[h].color+'">'+HOUSES[h].name+'</b> spelled it right! +1 pt · word was <b>'+esc(S.word)+'</b>');
+    S.buzzed=null; commit();
+  } else { S.tried.push(h); const left=Object.keys(HOUSES).filter(k=>!S.tried.includes(k));
+    S.lastEvent={kind:'wrong', house:h, t:Date.now()};
+    logLine('❌ <b style="color:'+HOUSES[h].color+'">'+HOUSES[h].name+'</b> was wrong — '+(left.length? left.map(x=>HOUSES[x].name).join(', ')+' may buzz again' : 'no houses left for this word'));
+    if(left.length){ S.status='armed'; S.armT=Date.now(); S.buzzed=null; S.buzzes=[]; }
+    else { S.status='idle'; S.buzzed=null; S.revealWord=true; }
+    commit(); } }
+function nextWord(){ if(MY.role!=='controller')return;
+  S.status='idle'; S.buzzed=null; S.buzzes=[]; S.tried=[]; S.revealWord=false; S.lastEvent=null;
+  logLine('⏭ Next word coming…'); commit();
+  const w=el('ctl-word'); w.value=''; w.focus(); }
+function toggleReveal(){ if(MY.role!=='controller')return; S.revealWord=!S.revealWord; commit(); }
+function adjustScore(house,d){ if(MY.role!=='controller')return; S.scores[house]=Math.max(0,(S.scores[house]||0)+d);
+  logLine((d>0?'➕':'➖')+' Manual score change for <b style="color:'+HOUSES[house].color+'">'+HOUSES[house].name+'</b> → '+S.scores[house]); commit(); }
+function resetScores(){ if(!confirm('Reset all house scores to 0?'))return;
+  Object.keys(S.scores).forEach(k=>S.scores[k]=0); logLine('🧹 Scores reset'); commit(); }
+function resetAll(){ if(!confirm('RESET THE ENTIRE GAME? Scores, words and log will be wiped.'))return;
+  const keepScores=false; S=defaultState(); if(!keepScores){} logLine('🧹 Full game reset'); commit(); }
+
+/* ---------- presence / locking ---------- */
+function helloLoop(){ Bus.publish({type:'hello', sid:SID, role: MY.role==='house'? MY.house : MY.role}); }
+function startHeartbeat(){ stopHeartbeat(); helloLoop(); hbTimer=setInterval(helloLoop, HB_MS); }
+function stopHeartbeat(){ clearInterval(hbTimer); hbTimer=null; }
+
+Bus.init();
+Bus.on(msg => {
+  if(msg.type==='state'){
+    if(MY.role==='controller'){ if(msg.state.ctrlSid && msg.state.ctrlSid!==SID){ foreignCtrlSeen=Date.now();
+      if(!applyState._lastWarn || Date.now()-applyState._lastWarn>15000){ applyState._lastWarn=Date.now();
+        toast('⚠ ANOTHER CONTROLLER IS ACTIVE IN THIS ROOM — only one Control Desk is allowed!'); } } return; }
+    foreignCtrlSeen = 0;
+    PREV=S; S=msg.state; lastStateT=Date.now();
+    applyState(true);
+  }
+  else if(msg.type==='hello' && MY.role==='controller'){
+    const now=Date.now(); const r=msg.role;
+    if(r==='screen'){ S.screens[msg.sid]=now; commitSoon(); return; }
+    if(HOUSES[r]){
+      const lk=S.locks[r];
+      if(lk && lk.sid!==msg.sid && (now-lk.t)<FRESH_MS){
+        Bus.publish({type:'reply', to:msg.sid, ok:false, reason:HOUSES[r].name+' is already connected on another device.'});
+      } else {
+        S.locks[r]={sid:msg.sid, t:now}; commitSoon();
+        Bus.publish({type:'reply', to:msg.sid, ok:true});
+      }
+    }
+  }
+  else if(msg.type==='buzz' && MY.role==='controller'){ receiveBuzz(msg.house, msg.t, msg.sid); }
+  else if(msg.type==='reply' && msg.to===SID && MY.role==='house'){
+    if(msg.ok){ granted=true; denyReason=null; }
+    else { granted=false; denyReason=msg.reason; }
+    applyState(false);
+  }
+});
+
+addEventListener('beforeunload', ()=>{ try{ Bus.publish({type:'bye', sid:SID, role: MY.role==='house'?MY.house:MY.role}); }catch(_){}});
+
+/* ---------- incoming state → FX + render ---------- */
+function applyState(fromNet){
+  FX(PREV, S); if(!fromNet) PREV=S;
+  renderTopChips();
+  if(MY.role==='screen') renderScreen();
+  if(MY.role==='house') renderHouse();
+  if(MY.role==='controller') renderController();
+}
+function FX(prev, next){
+  if(!prev){ return; }
+  if(next.status==='armed' && prev.status!=='armed') SFX.arm();
+  if(next.status==='locked' && prev.status!=='locked'){
+    SFX.buzz(); if(MY.role==='house' && next.buzzed===MY.house){ SFX.first(); vibrate([60,40,60]); }
+  }
+  if(next.lastEvent && (!prev.lastEvent || next.lastEvent.t!==prev.lastEvent.t)){
+    const ev=next.lastEvent, col=HOUSES[ev.house].color;
+    if(ev.kind==='correct'){ SFX.correct(); Confetti.burst(col);
+      if(MY.role==='screen'){ const c=el('celebrate'); c.style.setProperty('--hc',col);
+        el('cel-h').textContent=HOUSES[ev.house].name; el('cel-p').textContent='+1 POINT ✓  ·  “'+S.word+'”';
+        c.classList.remove('hidden'); setTimeout(()=>c.classList.add('hidden'),2600); } }
+    if(ev.kind==='wrong'){ SFX.wrong();
+      if(MY.role==='screen'){ const w=el('wrongflash'); w.classList.remove('hidden'); setTimeout(()=>w.classList.add('hidden'),1300); } }
+  }
+  if(next.revealWord && !prev.revealWord) SFX.reveal();
+}
+
+/* ---------- offline detection loop ---------- */
+setInterval(()=>{
+  if(MY.role==='screen'||MY.role==='house'){ renderTopChips();
+    if(MY.role==='screen') renderScreen(); if(MY.role==='house') renderHouse(); }
+  if(MY.role==='controller'){ renderDevices(); renderTopChips(); }
+}, 2000);
+const ctrlOnline = ()=> (Date.now()-lastStateT) < CTRL_GONE_MS && S.ctrlSid;
+
+/* ---------- shared top chips ---------- */
+function renderTopChips(){
+  const netLabel = Net.status==='off'||Net.status==='local' ? 'LOCAL TABS ONLY' : Net.label();
+  if(MY.role==='controller'){ const n=el('ctl-net'); n.textContent=netLabel; n.className='netchip '+(Net.status==='hosting'?'ok':'warn'); }
+  if(MY.role==='house'){ const n=el('hs-net');
+    n.textContent = ctrlOnline()? (granted?'● CONNECTED':'… WAITING') : 'CONTROLLER OFFLINE';
+    n.className = 'netchip '+(ctrlOnline()&&granted?'ok':'warn'); }
+  if(MY.role==='screen'){ el('sc-roomChip').textContent='ROOM: '+MY.room;
+    el('sc-offline').classList.toggle('hidden', ctrlOnline() || !lastStateT); }
+}
+
+/* ══════════════ LOGIN FLOW ══════════════ */
+let pickedHouse=null;
+el('btnGenRoom').onclick=()=>{ const c=Math.random().toString(36).slice(2,7).toUpperCase().replace(/[^A-Z0-9]/g,'X');
+  el('roomInput').value=c; SFX.click(); };
+el('roomInput').addEventListener('input', e=>{ e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8); });
+$$('[data-pwopen]').forEach(b=>b.onclick=()=>{ el('pw-'+b.dataset.pwopen).classList.toggle('hidden'); SFX.click(); });
+$$('#housePick .hchip').forEach(c=>c.onclick=()=>{ SFX.click(); pickedHouse=c.dataset.house;
+  $$('#housePick .hchip').forEach(x=>x.classList.toggle('on', x===c));
+  el('pw-house').classList.remove('hidden'); el('housePickHint').classList.add('hidden');
+  el('houseJoinName').textContent=HOUSES[pickedHouse].name; el('in-house-pw').focus(); });
+
+function currentRoom(){ const r=clean(el('roomInput').value).replace(/[^A-Z0-9]/g,''); return r||'LOCAL'; }
+function joinScreen(){ enterRole('screen', null, currentRoom()); }
+function joinController(){ const pw=(el('in-controller-pw').value||'').trim().toUpperCase();
+  if(pw!==CTRL_PW){ const p=el('pw-controller'); p.classList.add('shake'); el('err-controller').textContent='✗ WRONG PASSWORD'; setTimeout(()=>p.classList.remove('shake'),450); return; }
+  enterRole('controller', null, currentRoom()); }
+function joinHouse(){ if(!pickedHouse){ toast('Pick a house first!'); return; }
+  const pw=(el('in-house-pw').value||'').trim().toUpperCase();
+  if(pw!==HOUSES[pickedHouse].password){ const p=el('pw-house'); p.classList.add('shake'); el('err-house').textContent='✗ WRONG PASSWORD FOR '+HOUSES[pickedHouse].name; setTimeout(()=>p.classList.remove('shake'),450); return; }
+  enterRole('house', pickedHouse, currentRoom()); }
+$$('[data-join]').forEach(b=>b.onclick=()=>{ SFX.click(); const r=b.dataset.join;
+  if(r==='screen') joinScreen(); if(r==='controller') joinController(); if(r==='house') joinHouse(); });
+['in-controller-pw','in-house-pw'].forEach(id=>el(id).addEventListener('keydown',e=>{ if(e.key==='Enter'){ const btn=$( '[data-join="'+(id.includes('controller')?'controller':'house')+'"]'); btn.click(); } }));
+
+function setHash(){ location.hash = '#/'+MY.role + (MY.house?'/'+MY.house:'') + (MY.room==='LOCAL' ? '' : '?room='+MY.room); }
+
+function enterRole(role, house, room){
+  MY={role, house, room}; Bus.setRoom(room); Net.stop();
+  granted=false; denyReason=null; lastStateT=0; PREV=null; buzzBusy=false;
+  document.body.dataset.theme = role==='house' ? 'house-'+house : role;
+  $$('.view').forEach(v=>v.classList.remove('active'));
+  el('view-'+role).classList.add('active');
+  try{ sessionStorage.setItem('rbs-auto', JSON.stringify({role, house, room, ok:role==='screen'})); }catch(_){}
+  setHash(); SFX.click(); syncMuteButtons(); scrollTo(0,0);
+
+  if(role==='controller'){
+    restore(); S.ctrlSid=SID; lastStateT=Date.now();
+    el('ctl-room').textContent=room;
+    const base=location.href.split('#')[0];
+    el('ctl-openScreen').href = base+'#/screen'+(room==='LOCAL'?'':'?room='+room);
+    el('ctl-openHouse').href = base+(room==='LOCAL'?'':'#/?room='+room);
+    startHeartbeat();
+    if(room!=='LOCAL'){ Net.host(room, m=>Bus._recv(m), ()=>{renderTopChips(); toast('Room '+room+' is live!');},
+      why=>{ renderTopChips(); toast(why==='taken' ? '⚠ A controller already hosts room '+room : '⚠ No internet — running LOCAL TABS ONLY'); }); }
+    renderController(); renderTopChips(); commit();
+  }
+  if(role==='house'){
+    el('hs-title').innerHTML = '<span style="color:'+HOUSES[house].color+'">●</span> '+HOUSES[house].name;
+    el('hs-scoreL').textContent='My Points';
+    if(room!=='LOCAL') Net.join(room, m=>Bus._recv(m));
+    startHeartbeat(); renderHouse(); renderTopChips();
+  }
+  if(role==='screen'){
+    if(room!=='LOCAL') Net.join(room, m=>Bus._recv(m));
+    startHeartbeat(); renderScreen(); renderTopChips(); buildBoardOnce();
+  }
+}
+function exitRole(){ Net.stop(); stopHeartbeat();
+  MY={role:null,house:null,room:'LOCAL'}; Bus.setRoom('LOCAL');
+  document.body.dataset.theme='login'; try{ sessionStorage.removeItem('rbs-auto'); }catch(_){}
+  $$('.view').forEach(v=>v.classList.remove('active')); el('view-login').classList.add('active');
+  location.hash=''; scrollTo(0,0);
+}
+el('sc-exit').onclick=()=>{ if(confirm('Exit the SCREEN?')) exitRole(); };
+el('ctl-exit').onclick=()=>{ if(confirm('Exit the CONTROL DESK? The game will pause for everyone.')) exitRole(); };
+el('hs-exit').onclick=()=>{ if(confirm('Leave your house seat?')) exitRole(); };
+[['sc-mute'],['ctl-mute'],['hs-mute']].forEach(([id])=>el(id).onclick=()=>{ SFX.toggle(); syncMuteButtons(); });
+el('sc-full').onclick=()=>{ const d=document; if(d.fullscreenElement) d.exitFullscreen(); else d.documentElement.requestFullscreen && d.documentElement.requestFullscreen(); };
+el('ov-back').onclick=()=>{ el('overlay').classList.add('hidden'); exitRole(); };
+
+/* auto-rejoin a refreshed tab + prefill room code carried in the link */
+(function autoJoin(){
+  try{
+    const hash=location.hash||''; const m=hash.match(/^#\/(screen|controller|house)(?:\/(red|blue|green|orange))?\??(?:room=([A-Z0-9]+))?/);
+    const auto=JSON.parse(sessionStorage.getItem('rbs-auto')||'null');
+    if(m && ((m[1]==='screen') || (auto && auto.role===m[1]))){
+      enterRole(m[1], m[2]||null, m[3]||(auto&&auto.room)||'LOCAL'); return;
+    }
+    const rm=hash.match(/room=([A-Z0-9]+)/); if(rm) el('roomInput').value=rm[1];
+  }catch(_){}
+})();
+
+/* ══════════════ SCREEN RENDER ══════════════ */
+let boardBuilt=false;
+function buildBoardOnce(){ if(boardBuilt) return; boardBuilt=true;
+  el('sc-cards').innerHTML = Object.values(HOUSES).map(h=>`
+    <div class="sc-card" id="sc-card-${h.id}" style="--hc:${h.color}">
+      <div class="sc-rank" id="sc-rank-${h.id}">—</div>
+      <div class="hdot"></div>
+      <div class="sc-name">${h.name}<span class="sc-connect" id="sc-con-${h.id}">offline</span></div>
+      <div class="sc-score" id="sc-score-${h.id}">0<small>PTS</small></div>
+    </div>`).join('');
+}
+function renderScreen(){
+  if(!boardBuilt) buildBoardOnce();
+  // stage chips
+  el('sc-comp').textContent = S.competition ? '🐝 SPELLING BEE' : '🏁 WAITING TO START';
+  const rc=el('sc-round'); rc.textContent = S.round || '—';
+  rc.style.display = S.round? '' : 'none';
+  // status block
+  const st=el('sc-status'), big=el('sc-statusBig'), sm=el('sc-statusSmall');
+  st.className='sc-status';
+  if(!ctrlOnline() && MY.role==='screen'){ big.textContent='WAITING FOR CONTROLLER…'; sm.textContent='The game cannot start until the Controller logs in.'; }
+  else if(!S.word && S.status==='idle'){ big.textContent='GET READY!'; sm.textContent='The Controller is preparing the next word…'; }
+  else if(S.status==='armed'){ st.classList.add('armed'); big.textContent='⚡ BUZZ!!!'; sm.textContent='Smash your buzzer — first tap locks in!'+ (S.tried.length? ' · Locked out: '+S.tried.map(h=>HOUSES[h].name).join(', ') : ''); }
+  else if(S.status==='locked' && S.buzzed){ st.classList.add('locked');
+    big.innerHTML='🚨 '+HOUSES[S.buzzed].name+' BUZZED!';
+    sm.textContent='Reaction '+(Math.max(0,S.buzzT-S.armT)/1000).toFixed(2)+'s · answering now…'; }
+  else if(S.revealWord && S.word){ st.classList.add('win'); big.textContent='“'+S.word+'”'; sm.textContent='The word is revealed!'; }
+  else { big.textContent='WAITING…'; sm.textContent='Next round starting soon.'; }
+  // word letters (only once the round is live or the word is revealed — no leaks while the controller types)
+  const w=el('sc-word'); const wordVisible = S.word && (S.status!=='idle' || S.revealWord);
+  if(wordVisible){ const letters=S.word.split('');
+    w.innerHTML = letters.map(ch=>`<div class="lt ${S.revealWord?'':'blank'}">${S.revealWord?esc(ch):'&nbsp;'}</div>`).join('');
+  } else w.innerHTML='';
+  // buzz order
+  el('sc-buzzes').innerHTML = S.buzzes.map((b,i)=>`<span class="bz-chip ${i===0?'first':''}" style="--hc:${HOUSES[b.house].color}">${i+1}ᵗʰ ${HOUSES[b.house].name} · ${(Math.max(0,b.t-S.armT)/1000).toFixed(2)}s</span>`).join('');
+  // leaderboard
+  const sorted=Object.values(HOUSES).slice().sort((a,b)=>(S.scores[b.id]-S.scores[a.id]));
+  sorted.forEach((h,i)=>{
+    const card=el('sc-card-'+h.id); const scoreEl=el('sc-score-'+h.id);
+    el('sc-rank-'+h.id).textContent=['🥇','🥈','🥉','4'][i]||i+1;
+    card.classList.toggle('lead', i===0 && S.scores[h.id]>0);
+    const lk=S.locks[h.id]; const on=lk && (Date.now()-lk.t)<FRESH_MS;
+    const con=el('sc-con-'+h.id); con.textContent=on?'● connected':'offline'; con.classList.toggle('on',!!on);
+    const cur=parseInt(scoreEl.firstChild.nodeValue)||0;
+    if(cur!==S.scores[h.id]){ scoreEl.firstChild.nodeValue=S.scores[h.id]; scoreEl.classList.remove('bump'); void scoreEl.offsetWidth; scoreEl.classList.add('bump'); }
+    card.parentNode.appendChild(card); // reorder DOM to ranking
+  });
+  // ticker
+  const last=S.log[0]; el('sc-ticker').textContent = last? '📣 '+last.txt.replace(/<[^>]+>/g,'') : '';
+}
+
+/* ══════════════ CONTROLLER RENDER ══════════════ */
+function renderDevices(){
+  const rows=[];
+  rows.push(`<div class="devrow"><span class="devdot host"></span><b>CONTROLLER (you)</b><span style="margin-left:auto;color:var(--dim)">online</span></div>`);
+  Object.values(HOUSES).forEach(h=>{ const lk=S.locks[h.id]; const on=lk&&(Date.now()-lk.t)<FRESH_MS;
+    rows.push(`<div class="devrow"><span class="devdot ${on?'on':''}" style="${on?'background:'+h.color+';box-shadow:0 0 8px '+h.color:''}"></span><b style="color:${h.color}">${h.name}</b><span style="margin-left:auto;color:var(--dim)">${on?'connected':'offline'}</span></div>`); });
+  const sc=Object.values(S.screens).filter(t=>(Date.now()-t)<FRESH_MS).length;
+  rows.push(`<div class="devrow"><span class="devdot ${sc?'on':''}"></span><b>📺 SCREENS</b><span style="margin-left:auto;color:var(--dim)">${sc} connected</span></div>`);
+  el('ctl-devices').innerHTML=rows.join('');
+}
+function renderController(){
+  // round chips
+  $$('#roundRow .rchip').forEach(c=>c.classList.toggle('on', c.dataset.round===S.round));
+  if(el('ctl-word').value!==S.word) el('ctl-word').value=S.word;
+  // status
+  const st=el('ctl-status'), a=el('ctl-statusA'), b=el('ctl-statusB');
+  st.className='ctl-status';
+  if(S.status==='armed'){ a.textContent='⚡ BUZZERS ARMED'; b.textContent='Waiting for the first buzz…'; a.style.color='#f2c94c'; }
+  else if(S.status==='locked' && S.buzzed){ st.classList.add('buzzed'); st.style.setProperty('--hc',HOUSES[S.buzzed].color);
+    a.textContent='🚨 '+HOUSES[S.buzzed].name; a.style.color=HOUSES[S.buzzed].color;
+    b.textContent='buzzed first · '+(Math.max(0,S.buzzT-S.armT)/1000).toFixed(2)+'s after arming · type their answer below'; }
+  else { a.textContent='IDLE'; a.style.color=''; b.textContent = S.word? 'Word set: '+S.word+' — arm the buzzers to start.' : 'Pick a round, type a word, then arm the buzzers.'; }
+  // buzz order
+  el('ctl-buzzes').innerHTML = S.buzzes.map((x,i)=>`<span class="bz-chip ${i===0?'first':''}" style="--hc:${HOUSES[x.house].color}">${i+1}ᵗʰ ${HOUSES[x.house].name} · ${(Math.max(0,x.t-S.armT)/1000).toFixed(2)}s</span>`).join('');
+  // verdict buttons
+  el('ctl-correct').disabled = !(S.status==='locked' && S.buzzed);
+  el('ctl-wrong').disabled   = !(S.status==='locked' && S.buzzed);
+  el('ctl-arm').disabled = !(S.word && S.round);
+  el('ctl-reveal').textContent = S.revealWord? '🙈 HIDE WORD' : '👁 REVEAL WORD';
+  // scores
+  el('ctl-scores').innerHTML = Object.values(HOUSES).map(h=>`
+    <div class="srow" style="--hc:${h.color}">
+      <span class="nm">${h.name}</span>
+      <span class="pt">${S.scores[h.id]}</span>
+      <button class="sqbtn" data-adj="${h.id}|1">+</button>
+      <button class="sqbtn" data-adj="${h.id}|-1">−</button>
+      <span class="mini">${S.tried.includes(h.id)?'locked out':''}</span>
+    </div>`).join('');
+  $$('#ctl-scores [data-adj]').forEach(btn=>btn.onclick=()=>{ const [h,d]=btn.dataset.adj.split('|'); adjustScore(h,parseInt(d)); SFX.click(); });
+  // log
+  el('ctl-log').innerHTML = S.log.map(l=>`<div class="logitem">${l.txt}</div>`).join('') || '<div class="logitem">Nothing yet — set a round to begin.</div>';
+  renderDevices();
+}
+/* answer live-match */
+el('ctl-answer').addEventListener('input', e=>{
+  e.target.value=e.target.value.toUpperCase();
+  const v=clean(e.target.value);
+  const m=el('ctl-match');
+  if(!v){ m.textContent=''; m.className='match'; }
+  else if(v===S.word){ m.textContent='✓ PERFECT MATCH — press CORRECT'; m.className='match ok'; }
+  else{ m.textContent='✗ does not match “'+S.word+'” yet'; m.className='match no'; }
+});
+el('ctl-word').addEventListener('input', e=>{ e.target.value=e.target.value.toUpperCase(); setWord(e.target.value); });
+el('ctl-word').addEventListener('keydown', e=>{ if(e.key==='Enter') armBuzzers(); });
+el('ctl-answer').addEventListener('keydown', e=>{ if(e.key==='Enter' && !el('ctl-correct').disabled) { verdict(true); e.target.value=''; } });
+el('ctl-arm').onclick=()=>{ SFX.click(); el('ctl-answer').value=''; el('ctl-match').textContent=''; armBuzzers(); };
+el('ctl-next').onclick=()=>{ SFX.click(); nextWord(); };
+el('ctl-reveal').onclick=()=>{ SFX.click(); toggleReveal(); };
+el('ctl-correct').onclick=()=>{ SFX.click(); verdict(true); el('ctl-answer').value=''; el('ctl-match').textContent=''; };
+el('ctl-wrong').onclick=()=>{ SFX.click(); verdict(false); el('ctl-answer').value=''; el('ctl-match').textContent=''; };
+el('ctl-resetScores').onclick=resetScores;
+el('ctl-resetAll').onclick=resetAll;
+$$('#roundRow .rchip').forEach(c=>c.onclick=()=>{ SFX.click(); setRound(c.dataset.round); });
+
+/* ══════════════ HOUSE RENDER ══════════════ */
+function renderHouse(){
+  const h=MY.house; if(!h) return;
+  const bn=el('hs-banner'), A=el('hs-bannerA'), B=el('hs-bannerB'), buzz=el('hs-buzzer');
+  bn.className='hs-banner';
+  const online=ctrlOnline();
+  const fresh = S.locks[h.id] && (Date.now()-S.locks[h.id].t)<FRESH_MS;
+  const lockedOut = S.tried.includes(h);
+
+  if(denyReason){ bn.classList.add('out'); A.textContent='⛔ SEAT TAKEN'; B.textContent=denyReason; }
+  else if(!online){ A.textContent='⌛ WAITING FOR CONTROLLER…'; B.textContent='The game cannot start until the Controller logs in to room '+MY.room; }
+  else if(!granted){ A.textContent='CONNECTING…'; B.textContent='Asking the Control Desk for the '+HOUSES[h].name+' seat…'; }
+  else if(S.status==='armed' && !lockedOut){ bn.classList.add('armed'); A.textContent='⚡ BUZZ NOW!!!'; B.textContent='Round '+(S.round||'')+' — first tap locks in!'; }
+  else if(S.status==='armed' && lockedOut){ bn.classList.add('out'); A.textContent='🔒 LOCKED OUT'; B.textContent='You missed this word — wait for the next one.'; }
+  else if(S.status==='locked' && S.buzzed===h){ bn.classList.add('win'); A.textContent='🎉 YOU BUZZED FIRST!'; B.textContent='SPELL THE WORD OUT LOUD for the Controller!'; }
+  else if(S.status==='locked'){ bn.classList.add('out'); A.textContent='😤 '+HOUSES[S.buzzed].name+' WAS FASTER'; B.textContent='Get ready — if they miss, buzzers RE-OPEN.'; }
+  else{ A.textContent='STANDBY'; B.textContent = S.word? 'Controller is setting things up…' : 'Waiting for the round to begin…'; }
+
+  // score / rank
+  el('hs-score').textContent=S.scores[h.id];
+  const sorted=Object.values(HOUSES).slice().sort((a,b)=>S.scores[b.id]-S.scores[a.id]);
+  el('hs-rank').textContent=['🥇','🥈','🥉','4ᵗʰ'][sorted.findIndex(x=>x.id===h.id)]||'—';
+  el('hs-roundIcon').textContent = S.round==='RAPID FIRE'?'🔥':S.round==='DIFFICULT'?'🟠':S.round==='HARD'?'🟡':S.round==='EASY'?'🟢':'🐝';
+  el('hs-roundName').textContent = S.round||'No Round';
+
+  // word info (letters count only, shown once the round is live — never the word itself)
+  const wordLive = S.word && (S.status!=='idle' || S.revealWord);
+  el('hs-word').innerHTML = wordLive ? ('WORD LENGTH: <b>'+S.word.length+' LETTERS</b>'+(S.revealWord? ' · REVEALED: <b>'+esc(S.word)+'</b>':'')) : '';
+
+  // buzzer state
+  const canBuzz = online && granted && !denyReason && S.status==='armed' && !lockedOut;
+  const iWon = S.status==='locked' && S.buzzed===h;
+  buzz.disabled = !canBuzz;
+  buzz.classList.toggle('armed', canBuzz);
+  buzz.innerHTML = canBuzz ? 'BUZZ!<span class="sub">tap to lock in</span>'
+    : iWon ? '🎉 YOU!<span class="sub">spell it aloud</span>'
+    : S.status==='locked' ? 'LOCKED<span class="sub">too slow!</span>'
+    : lockedOut && S.status==='armed' ? '🔒<span class="sub">locked out</span>'
+    : 'STANDBY<span class="sub">wait for it…</span>';
+  if(S.status!=='armed') buzzBusy=false;
+
+  // mini log
+  el('hs-log').innerHTML = S.log.slice(0,3).map(l=>`<div class="logitem">${l.txt}</div>`).join('');
+}
+
+/* house buzz (pointerdown = lowest latency) */
+const buzzEl=el('hs-buzzer');
+function doBuzz(e){ e && e.preventDefault();
+  if(buzzEl.disabled || buzzBusy) return;
+  buzzBusy=true; vibrate(80); SFX.buzz();
+  el('hs-bannerA').textContent='⚡ BUZZ SENT!'; el('hs-bannerB').textContent='Waiting for lock-in…';
+  Bus.publish({type:'buzz', sid:SID, house:MY.house, t:Date.now()});
+}
+buzzEl.addEventListener('pointerdown', doBuzz);
+buzzEl.addEventListener('contextmenu', e=>e.preventDefault());
+
+})();
+</script>
+</body>
+</html>
